@@ -1,0 +1,10 @@
+## Interface: 11505
+## Author: TheBoringDad
+## Version: 0.1
+## Title: Tags
+## Notes: Inventory helper addon
+## SavedVariables: TAGS_GLOBAL
+
+Data.lua
+Tags.lua
+UI.xml
