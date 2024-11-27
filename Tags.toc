@@ -1,6 +1,6 @@
 ## Interface: 11505
 ## Author: TheBoringDad
-## Version: 0.2
+## Version: 0.21
 ## Title: Tags
 ## Notes: Tag items to better manage your stuff.
 ## SavedVariables: TAGS_GLOBAL
