@@ -1,4 +1,11 @@
 
+--[[
+    Tags is a simple addon that allows you to 'tag' items so you can manage your inventory.
+
+    An item can have multiple tags and each tag will show in tooltips.
+
+    You can use alt + Right Click to open the Tags menu on bag items, character inventory slots, chat item links
+]]
 
 local addonName, Tags = ...;
 
@@ -10,17 +17,22 @@ local infoMessages = {
         cmdNewTag =      string.format("/tags newtag     name    %s", BLUE_FONT_COLOR:WrapTextInColorCode("Creates a new Tag")),
         cmdDeleteTag =   string.format("/tags deletetag  name    %s", BLUE_FONT_COLOR:WrapTextInColorCode("Delete Tag")),
 
-        tagAdded = "",
-        tagAddedError = "",
-        tagDeleted = "",
+        tagAdded = string.format("[%s] tag added!", addonName),
+        tagAddedError = string.format("[%s] error creating tag!", addonName),
+        tagDeleted = string.format("[%s] tag deleted!", addonName),
     },
 
 }
 
+--Tags are given a random colour when created, turn those {r,g,b} values into a wow ColorMixin and store here
 Tags.TagColours = {}
 
+--API table (for now only has minimal methods)
 Tags.Api = {}
 
+---Get TradeSkill IDs for professions that use the item
+---@param itemID number the itemID to query
+---@return table tradeskillIDs an iterable ipairs table of tradeskill IDs
 function Tags.Api:GetTradeskillsForItemID(itemID)
 
     local tradeskills = {}
@@ -42,6 +54,9 @@ function Tags.Api:GetTradeskillsForItemID(itemID)
     return ret;
 end
 
+---Get Recipes Spell IDs for all recipes that use the item
+---@param itemID number the itemID to query
+---@return table recipes an iterable table of recipes, this data will be the SpellID for the recipe NOT the itemID for the recipe itself
 function Tags.Api:GetRecipesForItemID(itemID)
 
     local recipes = {}
@@ -106,6 +121,11 @@ function Tags.Database:NewTag(tag)
                 icon = 134328,
             }
             Tags.TagColours[tag] = CreateColor(r, g, b)
+
+            print(infoMessages[GetLocale()].tagAdded)
+
+        else
+            print(infoMessages[GetLocale()].tagAddedError)
         end
     end
 end
@@ -248,7 +268,8 @@ local function HookGameTooltip()
                     end
                     GameTooltip_AddColoredLine(tooltip, "Tradeskills Tags", BLUE_FONT_COLOR, true, 0)
                     for _, tradeskillID in ipairs(tradeskills) do
-                        local tagButton = tooltip:AddLine(string.format("  |cffffffff%s", C_TradeSkillUI.GetTradeSkillDisplayName(tradeskillID)))
+                        --GameTooltip_AddColoredLine(tooltip, string.format("  |cffffffff%s", C_TradeSkillUI.GetTradeSkillDisplayName(tradeskillID)))
+                        tooltip:AddLine(string.format("  |cffffffff%s", C_TradeSkillUI.GetTradeSkillDisplayName(tradeskillID)))
                     end
                     tooltip:AddLine(" ")
                 end
@@ -276,7 +297,7 @@ local function CreateAndShowContextMenu(button, itemLink, itemID)
         rootDescription:CreateTitle(itemLink)
         rootDescription:CreateDivider()
         --rootDescription:CreateSpacer()
-        rootDescription:CreateTitle("Item Tags")
+        rootDescription:CreateTitle("Tags")
         for tag, tagInfo in pairs(tags) do
             local tagButton = rootDescription:CreateCheckbox(string.format("%s %s|r", CreateSimpleTextureMarkup(tagInfo.icon, 16), Tags.TagColours[tag]:WrapTextInColorCode(tag)), TagsMenuIsSelectedFunc, TagsMenuSetSelectedFunc, {
                 itemID = itemID,
@@ -288,14 +309,15 @@ end
 
 local function HookItemModifiedClick()
     hooksecurefunc("HandleModifiedItemClick", function(link, location)
-        --DevTools_Dump(link, location)
-        local button = GetMouseFoci()
-        if type(button) == "table" then
-            button = button[1]
-        end
-        local itemID = C_Item.GetItemInfoInstant(link)
-        if button and link and itemID then
-            CreateAndShowContextMenu(button, link, itemID)
+        if IsAltKeyDown() then
+            local button = GetMouseFoci()
+            if type(button) == "table" then
+                button = button[1]
+            end
+            local itemID = C_Item.GetItemInfoInstant(link)
+            if button and link and itemID then
+                CreateAndShowContextMenu(button, link, itemID)
+            end
         end
     end)
 end
