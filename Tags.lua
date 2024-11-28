@@ -110,11 +110,17 @@ function Tags.Database:GetOrSetSavedVariables(forceReset)
     end
 end
 
+---Generate a float between 0.3 and 1.0 to use as an rgb value. Ignore values less than 0.3 to avoid darker colourss
+---@return number float 
+local function GetRandomColour()
+    return math.random(3,10) / 10;
+end
+
 function Tags.Database:NewTag(tag)
     if self.db and type(tag) == "string" then
         if not self.db.tags[tag] then
 
-            local r, g, b = math.random(), math.random(), math.random()
+            local r, g, b = GetRandomColour(), GetRandomColour(), GetRandomColour()
 
             self.db.tags[tag] = {
                 colour = {r = r, g = g, b = b},
