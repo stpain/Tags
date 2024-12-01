@@ -14,8 +14,10 @@ local addonName, Tags = ...;
 local infoMessages = {
     enUS = {
 
-        cmdNewTag =      string.format("/tags newtag     name    %s", BLUE_FONT_COLOR:WrapTextInColorCode("Creates a new Tag")),
-        cmdDeleteTag =   string.format("/tags deletetag  name    %s", BLUE_FONT_COLOR:WrapTextInColorCode("Delete Tag")),
+        cmdNewTag =                 string.format("newtag         name        %s", BLUE_FONT_COLOR:WrapTextInColorCode("Creates a new Tag")),
+        cmdDeleteTag =              string.format("deletetag      name        %s", BLUE_FONT_COLOR:WrapTextInColorCode("Delete Tag")),
+        cmdVendorJunk =             string.format("vendorJunk     [value]       %s", BLUE_FONT_COLOR:WrapTextInColorCode("Toggle auto junk vendoring")),
+        cmdTradeskillTags =         string.format("tradeskills    [value]       %s", BLUE_FONT_COLOR:WrapTextInColorCode("Show/Hide tradeskill tags")),
 
         tagAdded = string.format("[%s] tag added!", addonName),
         tagAddedError = string.format("[%s] error creating tag!", addonName),
@@ -88,6 +90,7 @@ local databaseDefaults = {
     },
     items = {},
     autoVendorJunk = false,
+    showTradeSkillTags = true,
 }
 
 Tags.Database = {}
@@ -102,6 +105,19 @@ function Tags.Database:GetOrSetSavedVariables(forceReset)
     end
 
     self.db = TAGS_GLOBAL;
+
+    local version = tonumber(C_AddOns.GetAddOnMetadata(addonName, "Version"))
+
+    self.db.version = version;
+
+    --update the db for any new settings
+    if self.db then
+        for k, v in pairs(databaseDefaults) do
+            if self.db[k] == nil then
+                self.db[k] = v;
+            end
+        end
+    end
 
     if self.db.tags then
         for tag, info in pairs(self.db.tags) do
@@ -220,36 +236,76 @@ function Tags.Database:RemoveTagFromAllItems(tag)
     end
 end
 
+function Tags.Database:SetConfig(config, val)
+    if self.db and (self.db[config] ~= nil) then
+        self.db[config] = val;
+    end
+end
+
+function Tags.Database:GetConfig(config)
+    if self.db and (self.db[config] ~= nil) then
+        return self.db[config]
+    end
+end
 
 
 
+local SlashCommands = {
+    
+    newtag = function(msg)
+        local tagInput = string.sub(msg, 8)
+        Tags.Database:NewTag(tagInput)
+    end,
 
+    deletetag = function(msg)
+        local tagInput = string.sub(msg, 11)
+        Tags.Database:DeleteTag(tagInput)
+    end,
+
+    vendorjunk = function(msg)
+
+    end,
+
+    tradeskills = function(msg)
+        local input = string.sub(msg, 13)
+        if input == "true" then
+            Tags.Database:SetConfig("showTradeSkillTags", true)
+        elseif input == "false" then
+            Tags.Database:SetConfig("showTradeSkillTags", false)
+        end
+    end,
+}
 
 
 local function CreateSlashCommands()
     SLASH_TAGS1 = '/tags'
     SlashCmdList['TAGS'] = function(msg)
+        local locale = GetLocale()
         if msg == "" then
-            local helperMessage = string.format("Tags help\n%s\n%s", infoMessages[GetLocale()].cmdNewTag, infoMessages[GetLocale()].cmdDeleteTag)
+            local helperMessage = string.format("Tags slash commands, all start with /tags\n%s\n%s\n%s", infoMessages[locale].cmdNewTag, infoMessages[locale].cmdDeleteTag, infoMessages[locale].cmdTradeskillTags)
             print(helperMessage)
 
         else
-            local cmd, arg1, arg2 = strsplit(" ", msg)
-
-            if cmd == "newtag" and (type(arg1) == "string") then
-                local tagInput = string.sub(msg, 8)
-                Tags.Database:NewTag(tagInput)
-
-            elseif cmd == "deletetag" and (type(arg1) == "string") then
-                local tagInput = string.sub(msg, 11)
-                Tags.Database:DeleteTag(tagInput)
+            local cmd = strsplit(" ", msg)
+            if SlashCommands[cmd] then
+                SlashCommands[cmd](msg)
             end
         end
     end
 end
 
+local linesAdded = false
 local function HookGameTooltip()
+    GameTooltip:HookScript("OnTooltipCleared", function(tooltip)
+        linesAdded = false;
+    end)
+
     GameTooltip:HookScript("OnTooltipSetItem", function(tooltip)
+
+        if linesAdded == true then
+            return;
+        end
+
         local name, link = tooltip:GetItem()
         if link then
             local itemID = C_Item.GetItemInfoInstant(link)
@@ -260,25 +316,30 @@ local function HookGameTooltip()
                     GameTooltip_AddColoredLine(tooltip, addonName, BLUE_FONT_COLOR, true)
                 end
                 for k, tag in ipairs(tags) do
-                    local tagInfo = Tags.Database:GetTagInfo(tag)
+                    --local tagInfo = Tags.Database:GetTagInfo(tag)
                     GameTooltip_AddColoredLine(tooltip, string.format("  %s", tag), Tags.TagColours[tag], true)
                 end
                 if #tags > 0 then
                     tooltip:AddLine(" ")
                 end
 
-                local tradeskills = Tags.Api:GetTradeskillsForItemID(itemID)
-                if #tradeskills > 0 then
-                    if #tags == 0 then
+                local showTradeSkillTags = Tags.Database:GetConfig("showTradeSkillTags")
+                if showTradeSkillTags then
+                    local tradeskills = Tags.Api:GetTradeskillsForItemID(itemID)
+                    if #tradeskills > 0 then
+                        if #tags == 0 then
+                            tooltip:AddLine(" ")
+                        end
+                        GameTooltip_AddColoredLine(tooltip, "Tradeskills Tags", BLUE_FONT_COLOR, true, 0)
+                        for _, tradeskillID in ipairs(tradeskills) do
+                            --GameTooltip_AddColoredLine(tooltip, string.format("  |cffffffff%s", C_TradeSkillUI.GetTradeSkillDisplayName(tradeskillID)))
+                            tooltip:AddLine(string.format("  |cffffffff%s", C_TradeSkillUI.GetTradeSkillDisplayName(tradeskillID)))
+                        end
                         tooltip:AddLine(" ")
                     end
-                    GameTooltip_AddColoredLine(tooltip, "Tradeskills Tags", BLUE_FONT_COLOR, true, 0)
-                    for _, tradeskillID in ipairs(tradeskills) do
-                        --GameTooltip_AddColoredLine(tooltip, string.format("  |cffffffff%s", C_TradeSkillUI.GetTradeSkillDisplayName(tradeskillID)))
-                        tooltip:AddLine(string.format("  |cffffffff%s", C_TradeSkillUI.GetTradeSkillDisplayName(tradeskillID)))
-                    end
-                    tooltip:AddLine(" ")
                 end
+
+                linesAdded = true;
             end
         end
     end)
