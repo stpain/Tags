@@ -25,7 +25,8 @@
         "DELETE",
         "ADD",
         "MerchantSellAllJunkButton",
-        "OPTIONS"
+        "OPTIONS",
+        "NEW"
     ],
     "Lua.type.weakUnionCheck": true
 }

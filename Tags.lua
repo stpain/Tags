@@ -32,7 +32,6 @@ local infoMessages = {
 Tags.TagColours = {}
 
 
-
 --Saved Variables default values
 local databaseDefaults = {
     version = 0.0,
@@ -299,7 +298,7 @@ local function CreateAndShowContextMenu(button, itemLink, itemID)
         local newTagInputbox = rootDescription:CreateTemplate("InputBoxInstructionsTemplate");
         newTagInputbox:AddInitializer(function(frame)
             newTagInput = frame;
-            frame.Instructions:SetText("New Tag");
+            frame.Instructions:SetText(NEW);
             frame.Instructions:SetPoint("TOPLEFT", 6, 0);
             frame:SetSize(120, 24);
             frame:SetPoint("TOPLEFT", 5, 0);
