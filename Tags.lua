@@ -7,17 +7,19 @@
     You can use alt + Right Click to open the Tags menu on bag items, character inventory slots, chat item links
 ]]
 
-local addonName, Tags = ...;
+local addonName, addon = ...;
 
+Tags = CreateFrame("Frame");
 
 --Simple help message that can be printed to show slash commands
 local infoMessages = {
     enUS = {
 
-        cmdNewTag =                 string.format("newtag         name        %s", BLUE_FONT_COLOR:WrapTextInColorCode("Creates a new Tag")),
-        cmdDeleteTag =              string.format("deletetag      name        %s", BLUE_FONT_COLOR:WrapTextInColorCode("Delete Tag")),
-        cmdVendorJunk =             string.format("vendorJunk     [value]       %s", BLUE_FONT_COLOR:WrapTextInColorCode("Toggle auto junk vendoring")),
-        cmdTradeskillTags =         string.format("tradeskills    [value]       %s", BLUE_FONT_COLOR:WrapTextInColorCode("Show/Hide tradeskill tags")),
+        cmdNewTag =                 string.format("newtag         [name]        %s", BLUE_FONT_COLOR:WrapTextInColorCode("Creates a new Tag")),
+        cmdDeleteTag =              string.format("deletetag      [name]        %s", BLUE_FONT_COLOR:WrapTextInColorCode("Delete Tag")),
+        --cmdShowItemInfo =         string.format("showItemInfo    [value]       %s", BLUE_FONT_COLOR:WrapTextInColorCode("Show/Hide item info")),
+        cmdListTags =               string.format("listtags      %s", BLUE_FONT_COLOR:WrapTextInColorCode("List tags")),
+        cmdAutoJunk =               string.format("autojunk      [true/false]      %s", BLUE_FONT_COLOR:WrapTextInColorCode("Auto vendor junk")),
 
         tagAdded = string.format("[%s] tag added!", addonName),
         tagAddedError = string.format("[%s] error creating tag!", addonName),
@@ -29,79 +31,28 @@ local infoMessages = {
 --Tags are given a random colour when created, turn those {r,g,b} values into a wow ColorMixin and store here
 Tags.TagColours = {}
 
---API table (for now only has minimal methods)
-Tags.Api = {}
-
----Get TradeSkill IDs for professions that use the item
----@param itemID number the itemID to query
----@return table tradeskillIDs an iterable ipairs table of tradeskill IDs
-function Tags.Api:GetTradeskillsForItemID(itemID)
-
-    local tradeskills = {}
-
-    local recipes = self:GetRecipesForItemID(itemID)
-    
-    for k, recipe in ipairs(recipes) do
-        if Tags.Data.SpellIdToTradeskillId[recipe] then
-            tradeskills[Tags.Data.SpellIdToTradeskillId[recipe]] = true
-        end
-    end
-
-    local ret = {}
-
-    for id, _ in pairs(tradeskills) do
-        table.insert(ret, id)
-    end
-
-    return ret;
-end
-
----Get Recipes Spell IDs for all recipes that use the item
----@param itemID number the itemID to query
----@return table recipes an iterable table of recipes, this data will be the SpellID for the recipe NOT the itemID for the recipe itself
-function Tags.Api:GetRecipesForItemID(itemID)
-
-    local recipes = {}
-
-    for recipeSpellID, reagents in pairs(Tags.Data.SpellIdToReagentData) do
-        for i = 1, 7 do
-            if reagents[i] == itemID then
-                table.insert(recipes, recipeSpellID)
-            end
-        end
-    end
-
-    return recipes;
-end
-
-
-
-
 
 
 --Saved Variables default values
 local databaseDefaults = {
     version = 0.0,
-    tags = {
-        ["Junk"] = {
-            colour = {r = 0.5, g = 0.5, b = 0.5},
-            icon = 134328,
-        },
-    },
+    tags = {},
     items = {},
+    showItemInfo = true,
     autoVendorJunk = false,
-    showTradeSkillTags = true,
 }
 
 Tags.Database = {}
 
 
-function Tags.Database:GetOrSetSavedVariables(forceReset)
-    if forceReset == true or (not TAGS_GLOBAL) then
+function Tags.Database:Init(forceReset)
+
+    if (TAGS_GLOBAL == nil) then
+        TAGS_GLOBAL = {};
+    end
+
+    if (forceReset == true) then
         TAGS_GLOBAL = {}
-        for k, v in pairs(databaseDefaults) do
-            TAGS_GLOBAL[k] = v;
-        end
     end
 
     self.db = TAGS_GLOBAL;
@@ -119,6 +70,7 @@ function Tags.Database:GetOrSetSavedVariables(forceReset)
         end
     end
 
+    --load in the tag colours
     if self.db.tags then
         for tag, info in pairs(self.db.tags) do
             Tags.TagColours[tag] = CreateColor(info.colour.r, info.colour.g, info.colour.b)
@@ -126,9 +78,8 @@ function Tags.Database:GetOrSetSavedVariables(forceReset)
     end
 end
 
----Generate a float between 0.3 and 1.0 to use as an rgb value. Ignore values less than 0.3 to avoid darker colourss
 ---@return number float 
-local function GetRandomColour()
+local function GetRandomRgbValue()
     return math.random(3,10) / 10;
 end
 
@@ -136,7 +87,7 @@ function Tags.Database:NewTag(tag)
     if self.db and type(tag) == "string" then
         if not self.db.tags[tag] then
 
-            local r, g, b = GetRandomColour(), GetRandomColour(), GetRandomColour()
+            local r, g, b = GetRandomRgbValue(), GetRandomRgbValue(), GetRandomRgbValue()
 
             self.db.tags[tag] = {
                 colour = {r = r, g = g, b = b},
@@ -157,6 +108,7 @@ function Tags.Database:DeleteTag(tag)
         if self.db.tags[tag] then
             self:RemoveTagFromAllItems(tag)
             self.db.tags[tag] = nil
+            print(infoMessages[GetLocale()].tagDeleted)
         end
     end
 end
@@ -250,6 +202,9 @@ end
 
 
 
+
+
+
 local SlashCommands = {
     
     newtag = function(msg)
@@ -262,16 +217,19 @@ local SlashCommands = {
         Tags.Database:DeleteTag(tagInput)
     end,
 
-    vendorjunk = function(msg)
-
+    listtags = function()
+        local tags = Tags.Database:GetAllTags();
+        for tag, _ in pairs(tags) do
+            print(tag);
+        end
     end,
 
-    tradeskills = function(msg)
+    showItemInfo = function(msg)
         local input = string.sub(msg, 13)
         if input == "true" then
-            Tags.Database:SetConfig("showTradeSkillTags", true)
+            Tags.Database:SetConfig("showItemInfo", true)
         elseif input == "false" then
-            Tags.Database:SetConfig("showTradeSkillTags", false)
+            Tags.Database:SetConfig("showItemInfo", false)
         end
     end,
 }
@@ -282,7 +240,7 @@ local function CreateSlashCommands()
     SlashCmdList['TAGS'] = function(msg)
         local locale = GetLocale()
         if msg == "" then
-            local helperMessage = string.format("Tags slash commands, all start with /tags\n%s\n%s\n%s", infoMessages[locale].cmdNewTag, infoMessages[locale].cmdDeleteTag, infoMessages[locale].cmdTradeskillTags)
+            local helperMessage = string.format("Tags slash commands, all start with /tags\n%s\n%s\n%s", infoMessages[locale].cmdNewTag, infoMessages[locale].cmdDeleteTag, infoMessages[locale].cmdListTags)
             print(helperMessage)
 
         else
@@ -292,57 +250,6 @@ local function CreateSlashCommands()
             end
         end
     end
-end
-
-local linesAdded = false
-local function HookGameTooltip()
-    GameTooltip:HookScript("OnTooltipCleared", function(tooltip)
-        linesAdded = false;
-    end)
-
-    GameTooltip:HookScript("OnTooltipSetItem", function(tooltip)
-
-        if linesAdded == true then
-            return;
-        end
-
-        local name, link = tooltip:GetItem()
-        if link then
-            local itemID = C_Item.GetItemInfoInstant(link)
-            if itemID then
-                local tags = Tags.Database:GetTagsForItemID(itemID)
-                if #tags > 0 then
-                    tooltip:AddLine(" ")
-                    GameTooltip_AddColoredLine(tooltip, addonName, BLUE_FONT_COLOR, true)
-                end
-                for k, tag in ipairs(tags) do
-                    --local tagInfo = Tags.Database:GetTagInfo(tag)
-                    GameTooltip_AddColoredLine(tooltip, string.format("  %s", tag), Tags.TagColours[tag], true)
-                end
-                if #tags > 0 then
-                    tooltip:AddLine(" ")
-                end
-
-                local showTradeSkillTags = Tags.Database:GetConfig("showTradeSkillTags")
-                if showTradeSkillTags then
-                    local tradeskills = Tags.Api:GetTradeskillsForItemID(itemID)
-                    if #tradeskills > 0 then
-                        if #tags == 0 then
-                            tooltip:AddLine(" ")
-                        end
-                        GameTooltip_AddColoredLine(tooltip, "Tradeskills Tags", BLUE_FONT_COLOR, true, 0)
-                        for _, tradeskillID in ipairs(tradeskills) do
-                            --GameTooltip_AddColoredLine(tooltip, string.format("  |cffffffff%s", C_TradeSkillUI.GetTradeSkillDisplayName(tradeskillID)))
-                            tooltip:AddLine(string.format("  |cffffffff%s", C_TradeSkillUI.GetTradeSkillDisplayName(tradeskillID)))
-                        end
-                        tooltip:AddLine(" ")
-                    end
-                end
-
-                linesAdded = true;
-            end
-        end
-    end)
 end
 
 local function TagsMenuIsSelectedFunc(info)
@@ -357,24 +264,135 @@ local function TagsMenuSetSelectedFunc(info)
     end
 end
 
+local function TagsMenuIsConfigSelected(config)
+    return Tags.Database:GetConfig(config);
+end
+
+local function TagsMenuSetConfigSelected(config)
+    local currentValue = Tags.Database:GetConfig(config);
+    if (currentValue == true) then
+        Tags.Database:SetConfig(config, false);
+    else
+        Tags.Database:SetConfig(config, true);
+    end
+end
+
 local function CreateAndShowContextMenu(button, itemLink, itemID)
     local tags = Tags.Database:GetAllTags()
+    local newTagInput;
     MenuUtil.CreateContextMenu(button, function(button, rootDescription)
-        rootDescription:CreateTitle(addonName)
-        rootDescription:CreateTitle(itemLink)
-        rootDescription:CreateDivider()
-        --rootDescription:CreateSpacer()
-        rootDescription:CreateTitle("Tags")
+        --rootDescription:CreateTitle(addonName);
+        rootDescription:CreateTitle(itemLink);
+        rootDescription:CreateTitle("Tags");
         for tag, tagInfo in pairs(tags) do
             local tagButton = rootDescription:CreateCheckbox(string.format("%s %s|r", CreateSimpleTextureMarkup(tagInfo.icon, 16), Tags.TagColours[tag]:WrapTextInColorCode(tag)), TagsMenuIsSelectedFunc, TagsMenuSetSelectedFunc, {
                 itemID = itemID,
                 tag = tag,
             })
+
+            local deleteTagButton = tagButton:CreateButton(DELETE, function()
+                Tags.Database:DeleteTag(tag);
+            end)
         end
+        rootDescription:CreateDivider();
+        rootDescription:CreateTitle(OPTIONS);
+        local newTagInputbox = rootDescription:CreateTemplate("InputBoxInstructionsTemplate");
+        newTagInputbox:AddInitializer(function(frame)
+            newTagInput = frame;
+            frame.Instructions:SetText("New Tag");
+            frame.Instructions:SetPoint("TOPLEFT", 6, 0);
+            frame:SetSize(120, 24);
+            frame:SetPoint("TOPLEFT", 5, 0);
+            frame:SetAutoFocus(false);
+
+            frame:HookScript("OnTextChanged", function(self)
+                self.Instructions:SetShown(self:GetText() == "");
+            end)
+        end)
+        rootDescription:CreateButton(ADD, function()
+            local text = newTagInput:GetText();
+            if text == "" then
+                return;
+            end
+            Tags.Database:NewTag(text);
+        end)
+        rootDescription:CreateCheckbox("Auto Vendor Junk", TagsMenuIsConfigSelected, TagsMenuSetConfigSelected, "autoVendorJunk");
+        rootDescription:CreateCheckbox("Show Item Info", TagsMenuIsConfigSelected, TagsMenuSetConfigSelected, "showItemInfo");
+
     end)
 end
 
-local function HookItemModifiedClick()
+
+local function UpdateTooltip(tooltip)
+
+    if tooltip.GetItem == nil then
+        return;
+    end
+
+    local name, link = tooltip:GetItem()
+    if link then
+        local itemID, itemType, itemSubType, equipLoc, icon, itemClassID, itemSubClassID = C_Item.GetItemInfoInstant(link)
+        if itemID then
+            local tags = Tags.Database:GetTagsForItemID(itemID)
+            if (#tags > 0) then
+                tooltip:AddLine(" ")
+                GameTooltip_AddColoredLine(tooltip, addonName, BLUE_FONT_COLOR, true)
+            end
+            for k, tag in ipairs(tags) do
+                GameTooltip_AddColoredLine(tooltip, string.format("  %s", tag), Tags.TagColours[tag], true)
+            end
+            if (#tags > 0) then
+                tooltip:AddLine(" ")
+            end
+
+            local showItemInfo = Tags.Database:GetConfig("showItemInfo")
+            if (showItemInfo == true) then
+                if (#tags == 0) then
+                    tooltip:AddLine(" ")
+                    GameTooltip_AddColoredLine(tooltip, "Tags Item Info", BLUE_FONT_COLOR, true)
+                end
+                --GameTooltip_AddColoredLine(tooltip, itemSubType, BLUE_FONT_COLOR, true, 0)
+                tooltip:AddDoubleLine("ItemID", itemID, 1,1,1);
+                tooltip:AddDoubleLine("Item Type", itemType, 1,1,1);
+                tooltip:AddDoubleLine("Item SubType", itemSubType, 1,1,1);
+                tooltip:AddDoubleLine("Icon FileID", icon, 1,1,1);
+                tooltip:AddDoubleLine("EquipLocation", _G[equipLoc], 1,1,1);
+            end
+
+        end
+    end
+end
+
+
+
+Tags:RegisterEvent("PLAYER_ENTERING_WORLD");
+Tags:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_SHOW");
+Tags:SetScript("OnEvent", function(self, event, ...)
+    if (event == "PLAYER_ENTERING_WORLD") then
+        local isInitial, isReload = ...;
+        if (isInitial or isReload) then
+            self:Init();
+        end
+    end
+    if (event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW") then
+        local id = ...;
+        if (id == 5) and (MerchantSellAllJunkButton:IsVisible()) then
+            local shouldVendorJunk = Tags.Database:GetConfig("autoVendorJunk");
+            if (shouldVendorJunk == true) then
+                C_MerchantFrame.SellAllJunkItems();
+                print(string.format("[%s] Junk sold!", addonName));
+            end
+        end
+    end
+end)
+
+
+function Tags:Init()
+
+    Tags.Database:Init()
+
+    CreateSlashCommands()
+
     hooksecurefunc("HandleModifiedItemClick", function(link, location)
         if IsAltKeyDown() then
             local button = GetMouseFoci()
@@ -387,46 +405,9 @@ local function HookItemModifiedClick()
             end
         end
     end)
-end
 
-local function HookContainerFrameItemButton()
-    hooksecurefunc("ContainerFrameItemButton_OnModifiedClick", function(button, leftRight)
-
-        if IsAltKeyDown() and leftRight == "RightButton" then
-            local slot, bag = button:GetID(), button:GetParent():GetID()
-            local itemInfo = C_Container.GetContainerItemInfo(bag, slot)
-
-            if itemInfo and itemInfo.itemID then
-                CreateAndShowContextMenu(button, itemInfo.hyperlink, itemInfo.itemID)
-            end
-        end
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip)
+        UpdateTooltip(tooltip);
     end)
-end
-
-
-
-
-
-
-TagsMixin = {}
-
-function TagsMixin:OnLoad()
-    self:RegisterEvent("PLAYER_ENTERING_WORLD")
-end
-
-function TagsMixin:OnEvent(event, ...)
-    if event == "PLAYER_ENTERING_WORLD" then
-        self:Init()
-    end
-end
-
-function TagsMixin:Init()
-
-    Tags.Database:GetOrSetSavedVariables()
-
-    HookGameTooltip()
-    HookItemModifiedClick()
-    HookContainerFrameItemButton()
-    CreateSlashCommands()
 
 end
